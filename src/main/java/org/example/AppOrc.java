@@ -86,6 +86,18 @@ public class AppOrc
             System.out.println("query all data: after update schema for table with default value:" + strDb + "." + strTable);
             query(strDb, strTable);
         }
+
+        // insert new record that default value set to another value
+        {
+            insertDefault(strDb, strTable);
+            System.out.println("insert records with default value set to other value succeed.");
+        }
+
+        //query
+        {
+            System.out.println("query all data: after insert  cords with default value set to other value, for table:" + strDb + "." + strTable);
+            query(strDb, strTable);
+        }
     }
 
     public static void create(String db, String table) {
@@ -104,6 +116,40 @@ public class AppOrc
 
         // create table
         catalog.createTable(name, schema, spec, properties);
+    }
+
+    public static void insertDefault(String strDb, String strTable) throws IOException {
+        HadoopCatalog catalog = new HadoopCatalog(config, wareHouseLocation);
+        Table table = catalog.loadTable(TableIdentifier.of(strDb, strTable));
+        // generate records
+        GenericRecord record = GenericRecord.create(table.schema());
+        ImmutableList.Builder<GenericRecord> build = new ImmutableList.Builder<>();
+        build.add(record.copy(ImmutableMap.of("id", 11, "name", "chen11", "birth", "2023-03-08", "gender", 0)));
+        build.add(record.copy(ImmutableMap.of("id", 21, "name", "yuan11", "birth", "2023-03-09", "gender", 0)));
+        build.add(record.copy(ImmutableMap.of("id", 31, "name", "jie11", "birth", "2023-03-18", "gender", 0)));
+        build.add(record.copy(ImmutableMap.of("id", 41, "name", "ma11", "birth", "2023-03-21", "gender", 0)));
+        ImmutableList<GenericRecord> records = build.build();
+
+        // write record to parquet file
+        String filePath = table.location() + "/" + UUID.randomUUID().toString();
+        OutputFile file = table.io().newOutputFile(filePath);
+        DataWriter<GenericRecord> dataWriter = ORC.writeData(file)
+                .schema(table.schema())
+                .createWriterFunc(GenericOrcWriter::buildWriter)
+                .overwrite()
+                .withSpec(PartitionSpec.unpartitioned())
+                .build();
+        try {
+            for (GenericRecord rec : records) {
+                dataWriter.write(rec);
+            }
+        } finally {
+            dataWriter.close();
+        }
+
+        // put file to table
+        DataFile dataFile = dataWriter.toDataFile();
+        table.newAppend().appendFile(dataFile).commit();
     }
 
 

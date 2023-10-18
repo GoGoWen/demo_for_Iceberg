@@ -82,6 +82,18 @@ public class AppAvro
             System.out.println("query all data: after update schema for table with default value:" + strDb + "." + strTable);
             query(strDb, strTable);
         }
+
+        // insert new record that default value set to another value
+        {
+            insertDefault(strDb, strTable);
+            System.out.println("insert records with default value set to other value succeed.");
+        }
+
+        //query
+        {
+            System.out.println("query all data: after insert  cords with default value set to other value, for table:" + strDb + "." + strTable);
+            query(strDb, strTable);
+        }
     }
 
     public static void create(String db, String table) {
@@ -100,6 +112,25 @@ public class AppAvro
 
         // create table
         catalog.createTable(name, schema, spec, properties);
+    }
+
+    public static void insertDefault(String strDb, String strTable) throws IOException {
+        HadoopCatalog catalog = new HadoopCatalog(config, wareHouseLocation);
+        Table table = catalog.loadTable(TableIdentifier.of(strDb, strTable));
+        // generate records
+        GenericRecordBuilder recordBuilder = new GenericRecordBuilder(AvroSchemaUtil.convert(table.schema(), strTable));
+        List<GenericData.Record> records = new ArrayList<>();
+        records.add(recordBuilder.set("id", 4).set("name", "name4").set("birth", "2023-01-04").set("gender", 0).build());
+        records.add(recordBuilder.set("id", 5).set("name", "name5").set("birth", "2023-01-05").set("gender", 0).build());
+        records.add(recordBuilder.set("id", 6).set("name", "name6").set("birth", "2023-01-06").set("gender", 0).build());
+        String fileLocation = table.location().replace("file:", "") + String.format("/data/%s.avro", UUID.randomUUID().toString());
+        try (FileAppender<GenericData.Record> writer = Avro.write(Files.localOutput(fileLocation)).schema(table.schema()).named(strTable).build()) {
+            for (GenericData.Record rec : records) {
+                writer.add(rec);
+            }
+            DataFile datafile = DataFiles.builder(table.spec()).withRecordCount(3).withPath(fileLocation).withFileSizeInBytes(Files.localInput(fileLocation).getLength()).build();
+            table.newAppend().appendFile(datafile).commit();
+        }
     }
 
     public static void insert(String strDb, String strTable) throws IOException {
